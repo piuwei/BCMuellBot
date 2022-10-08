@@ -1,0 +1,2 @@
+token       9999999999:ABCDEFGabcdefgABCDEFGabcdefgABCDEFG
+dev_id      1234567890
