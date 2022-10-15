@@ -1,31 +1,27 @@
 #!/usr/bin/env python3
 # pylint: disable=C0116,W0613
-# This program is dedicated to the public domain under the CC0 license.
+
 """
 Muellbot
 hg -> git
 
 TODO
     - change to inline Keyboard... seems nicer in Groupchat... too many messages
-    
+    - add Setting for reminder time
+    - change from pickled persistence to json (safer + human readable)
 """
-# from email import message
-from distutils.ccompiler import get_default_compiler
-from email.message import Message
+
 import logging
+# Data Manipulation
+from datetime import datetime, timedelta
 from multiprocessing import context
 
-# python-telegram-bot
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-    #   InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton
-from telegram.ext import Updater, CommandHandler,  CallbackContext, MessageHandler,\
-    Filters, ConversationHandler, PicklePersistence
-    #   CallbackQueryHandler
-
-# Data Manipulation
-from datetime import timedelta, datetime
-from pytz import timezone
 import pandas as pd
+from pytz import timezone
+# python-telegram-bot
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
+                          Filters, MessageHandler, PicklePersistence, Updater)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
@@ -292,7 +288,7 @@ def schedule_reminders(context: CallbackContext,
             # schedule one reminder per category k
             when = (datum-first_call)
             localwhen = TIMEZONE.localize(when)
-            message = f"""\
+            message = f"""<i>Erinnerung</i>
 Heute noch rausstellen:
 <b>{k}</b>
 (Abholung: {DAYS_SHORT[datum.weekday()]}, {datum.strftime('%d.%m.%Y')}, \
@@ -511,7 +507,7 @@ def main() -> None:
     ("morgen", "Kalendereintrag für morgen."),
     ("next", "Nächster relevanter Mülltermin"),
     ("help", "kleine Hilfe"),
-    ("reminders_toggle", "Erinnerungen in diesem Chat an/aus"),
+    ("reminders_toggle", "Automatische Erinnerungen in diesem Chat an/aus"),
     # ("settings", "Einstellungen (pro Chat)"),
     # ("scheduled_reminders", "geplante Erinnerungen"), # nur dev/debug
     ]
