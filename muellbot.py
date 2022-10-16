@@ -452,7 +452,6 @@ def set_reminders(update: Update, context: CallbackContext) -> int:
                         
             message = "Erinnerungen in diesem Chat sind jetzt AUS."
             query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
-            # context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
             return None
         
         else:
@@ -470,11 +469,9 @@ def set_reminders(update: Update, context: CallbackContext) -> int:
                                             name=f"schedule_reminders_repeating_{chat_id}")
             
             query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
-            # context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
             
     else:
         query.edit_message_text(text="Bitte Einstellungen anpassen.", parse_mode='HTML', reply_markup=main_menu_markup)
-        # context.bot.send_message(chat_id=update.effective_chat.id, text="Bitte Einstellungen anpassen. /start", parse_mode='HTML')
         
     return MAIN_MENU
 
@@ -534,7 +531,6 @@ def main() -> None:
 
     # Add conversation handler with predefined states:
     conv_handler = ConversationHandler(
-        # per_message = True,
         entry_points=[CommandHandler("start", start)],
         states={
             MAIN_MENU: [
@@ -566,29 +562,14 @@ def main() -> None:
     
     dispatcher.add_handler(conv_handler)
     dispatcher.add_handler(CommandHandler('start', start))
-    dispatcher.add_handler(CommandHandler('restart', restart))
     dispatcher.add_handler(CommandHandler('next', next_date))
     dispatcher.add_handler(CommandHandler('help', help_command))
     
-    # dispatcher.add_handler(CommandHandler('settings', settings))
-    # dispatcher.add_handler(CommandHandler('heute', heute))
-    # dispatcher.add_handler(CommandHandler('morgen', morgen))
-    # dispatcher.add_handler(CommandHandler('help', help_command))
-    # dispatcher.add_handler(CommandHandler('reminders_toggle', set_reminders))
-    # dispatcher.add_handler(CommandHandler('scheduled_jobs', scheduled_jobs)) # nur dev/debug
-    
-    # dispatcher.add_handler(MessageHandler(Filters.command, unknown_cmd))
-    # dispatcher.add_handler(MessageHandler(Filters.all, help_command))
-    
     COMMANDS = [
     ("start", "Hauptmenü starten"),
-    ("heute", "Kalendereintrag für heute."),
-    ("morgen", "Kalendereintrag für morgen."),
-    ("next", "Nächster relevanter Mülltermin"),
+    ("next", "Nächster Mülltermin im eingestellten Bezirk"),
     ("help", "kleine Hilfe"),
     ("reminders_toggle", "Automatische Erinnerungen in diesem Chat an/aus"),
-    # ("settings", "Einstellungen (pro Chat)"),
-    # ("scheduled_reminders", "geplante Erinnerungen"), # nur dev/debug
     ]
     
     dispatcher.bot.set_my_commands(COMMANDS)
