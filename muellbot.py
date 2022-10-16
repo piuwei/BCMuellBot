@@ -3,12 +3,12 @@
 
 """
 Muellbot
-hg -> git
 
 TODO
     - change to inline Keyboard... seems nicer in Groupchat... too many messages
-    - add Setting for reminder time
-    - change from pickled persistence to json (safer + human readable)
+    - add Setting for reminder time, instead of 20:00 fixed
+    - ...
+    - (low prio) change from pickled persistence to json (safer + human readable)
 """
 
 import logging
@@ -19,9 +19,11 @@ from multiprocessing import context
 import pandas as pd
 from pytz import timezone
 # python-telegram-bot
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
-from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
-                          Filters, MessageHandler, PicklePersistence, Updater)
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
+                      ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
+from telegram.ext import (CallbackContext, CallbackQueryHandler,
+                          CommandHandler, ConversationHandler, Filters,
+                          MessageHandler, PicklePersistence, Updater)
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
@@ -46,17 +48,26 @@ DATEFORMAT = "%d.%m.%Y"
 # FILTERED_CSV = f'AK_{YEAR}_{RESTMUELL_BEZIRK}{RECYCLING_BEZIRK}-{BEZIRK}.csv'
 FULL_CSV = f'AK_2022_komplett.csv'
  
-MAIN_MENU, SETTINGS_MENU, RESTMUELL_SETTING, RECYCLING_SETTING, SETTINGS_DONE = range(5)
+MAIN_MENU, SETTINGS_MENU, RESTMUELL_SETTING, RECYCLING_SETTING, SETTINGS_DONE, RESTART = range(6)
 
-main_menu_keyboard = [["👏 Heute", "📅 Nächster Termin"],
-                      ["🌇 Morgen", "⏰ auto. Erinnerungen"],
-                      ['🔚 Schließen', '⚙ Einstellungen']]
-main_menu_markup = ReplyKeyboardMarkup(main_menu_keyboard,
-                                       resize_keyboard = True)
+main_menu_keyboard = [
+    [InlineKeyboardButton("👏 Heute", callback_data='today'),
+     InlineKeyboardButton("📅 Nächster Termin", callback_data='next')],
+    [InlineKeyboardButton("🌇 Morgen", callback_data='tomorrow'),
+     InlineKeyboardButton("⏰ auto. Erinnerungen", callback_data='reminders')],
+    [InlineKeyboardButton("🔚 Schließen", callback_data='close'),
+     InlineKeyboardButton("⚙ Einstellungen", callback_data='settings')]]
+main_menu_markup = InlineKeyboardMarkup(main_menu_keyboard)
 
-settings_keyboard = [["Restmüllbezirk", "♻ Recyclingbezirk"], ["🔙 Fertig"]]
-settings_markup = ReplyKeyboardMarkup(settings_keyboard, resize_keyboard = True)
+settings_keyboard = [
+    [InlineKeyboardButton("Restmüllbezirk", callback_data='trash'),
+     InlineKeyboardButton("♻ Recyclingbezirk", callback_data='recycling')],
+    [InlineKeyboardButton("🔙 Fertig", callback_data='done')]]
+settings_markup = InlineKeyboardMarkup(settings_keyboard)
 
+restart_keyboard = [
+    [InlineKeyboardButton("Start", callback_data='restart')]]
+restart_markup = InlineKeyboardMarkup(restart_keyboard)
 
 def filter_df(df, pat=r'', row=True, dropna=True):
     """Returns whole rows with pat if row, 
@@ -96,6 +107,14 @@ def get_day_info(lookday: datetime, df) -> pd.Series:
     else:
         return pd.Series()
 
+def get_next_day(df, lookday=None):
+    """take df and get next row from today or lookday"""
+    
+    if not lookday:
+        lookday =  datetime.today()
+    diff_df = df.index-lookday
+    return df.loc[diff_df >= timedelta(days=0)].iloc[0]
+
 def format_day_info(day_info, pat) -> str:
     """Takes day's infos and makes a pretty string output.
     """
@@ -120,50 +139,130 @@ def format_day_info(day_info, pat) -> str:
     
 def start(update: Update, context: CallbackContext) -> int:
 
+    # query = update.callback_query
     chat_keys = context.chat_data.keys()
     # Initialize additional chat_data variables
     if 'reminders_flag' not in chat_keys:
         context.chat_data['reminders_flag'] = False
         
     if 'RM_bezirk' not in chat_keys or 'REC_bezirk' not in chat_keys:
-        update.message.reply_text('Restmuellbezirk und Recyclingbezirk einstellen',
+        update.message.reply_text('Zuerst Restmuellbezirk und Recyclingbezirk einstellen',
                                   reply_markup=settings_markup)
         return SETTINGS_MENU
     
-    update.message.reply_text('Siehe Auswahlmenü unten', reply_markup=main_menu_markup)
+    update.message.reply_text('Hi 👋👋\nWas hättest du gerne?', reply_markup=main_menu_markup)
     return MAIN_MENU
 
+def restart(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+
+    chat_keys = context.chat_data.keys()
+    
+    # Initialize additional chat_data variables
+    if 'reminders_flag' not in chat_keys:
+        context.chat_data['reminders_flag'] = False
+        
+    if 'RM_bezirk' not in chat_keys or 'REC_bezirk' not in chat_keys:
+        query.edit_message_text('Zuerst Restmuellbezirk und Recyclingbezirk einstellen',
+                                  reply_markup=settings_markup)
+        return SETTINGS_MENU
+    
+    query.edit_message_text('Hi 👋👋\nWas hättest du gerne?', reply_markup=main_menu_markup)
+    return MAIN_MENU
+
+
 def settings(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text('Einstellung wählen:', reply_markup=settings_markup)
+    query = update.callback_query
+    
+    query.answer()
+    cdk = context.chat_data.keys()
+    if 'RM_bezirk' in cdk and 'REC_bezirk' in cdk:
+        message = f"Einstellungen: \nRestmuellbezirk: {context.chat_data['RM_bezirk']}\
+                \nRecyclingbezirk: {context.chat_data['REC_bezirk']}"
+    elif 'RM_bezirk' in cdk:
+        message = f"Einstellungen: \nRestmuellbezirk: {context.chat_data['RM_bezirk']}\nRecyclingbezirk: N/A"
+    elif 'REC_bezirk' in cdk:
+        message = f"Einstellungen: \nRestmuellbezirk: N/A\nRecyclingbezirk: N/A"
+        
+    query.edit_message_text(
+            text=message+"\nEinstellung wählen:",
+            reply_markup=main_menu_markup)
+        
     return SETTINGS_MENU
 
+def settings_done(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    # reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard = True)
+    cdk = context.chat_data.keys()
+    if 'RM_bezirk' in cdk and 'REC_bezirk' in cdk:
+        query.edit_message_text(
+            f"Einstellungen: \nRestmuellbezirk: {context.chat_data['RM_bezirk']}\
+                \nRecyclingbezirk: {context.chat_data['REC_bezirk']}",
+            reply_markup=main_menu_markup)
+    elif 'RM_bezirk' in cdk:
+        query.edit_message_text(
+            f"Einstellungen: \nRestmuellbezirk: {context.chat_data['RM_bezirk']}\nRecyclingbezirk: N/A",
+            reply_markup=main_menu_markup)
+    elif 'REC_bezirk' in cdk:
+        query.edit_message_text(
+            f"Einstellungen: \nRestmuellbezirk: N/A\nRecyclingbezirk: N/A",
+            reply_markup=main_menu_markup)
+    return MAIN_MENU
+
 def select_restmuellbezirk(update: Update, context: CallbackContext):
-    keyboard1 = [['1', '2', '3', '4'], ['5', '6', '7', '8']]
-    reply_markup = ReplyKeyboardMarkup(keyboard1, resize_keyboard = True)
-    update.message.reply_text('RESTMUELLBEZIRK:', reply_markup=reply_markup)    
+    query = update.callback_query
+    query.answer()
+    keyboard_restmuell = [
+        [InlineKeyboardButton('1', callback_data='1'),
+         InlineKeyboardButton('2', callback_data='2'),
+         InlineKeyboardButton('3', callback_data='3'),
+         InlineKeyboardButton('4', callback_data='4')],
+        [InlineKeyboardButton('5', callback_data='5'),
+         InlineKeyboardButton('6', callback_data='6'),
+         InlineKeyboardButton('7', callback_data='7'),
+         InlineKeyboardButton('8', callback_data='8')]]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard_restmuell)
+    query.edit_message_text('RESTMUELLBEZIRK:', reply_markup=reply_markup)    
     return RESTMUELL_SETTING
 
 def select_recyclingbezirk(update: Update, context: CallbackContext):
-    keyboard2 = [['A', 'B', 'C'], ['D', 'E']]
-    reply_markup = ReplyKeyboardMarkup(keyboard2, resize_keyboard = True)
-    update.message.reply_text('RECYCLINGBEZIRK (Papier, Gelber Sack):',
+    query = update.callback_query
+    query.answer()
+    keyboard_recycling = [
+        [InlineKeyboardButton('A', callback_data='A'),
+         InlineKeyboardButton('B', callback_data='B'),
+         InlineKeyboardButton('C', callback_data='C')],
+        [InlineKeyboardButton('D', callback_data='D'),
+         InlineKeyboardButton('E', callback_data='E')]]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard_recycling)
+    query.edit_message_text('RECYCLINGBEZIRK (Papier, Gelber Sack):',
                               reply_markup=reply_markup)
     return RECYCLING_SETTING
 
 def set_restmuellbezirk(update: Update, context: CallbackContext):
-    context.chat_data['RM_bezirk'] = update.message.text
-    update.message.reply_text(f'Restmüllbezirk eingestellt: {update.message.text}\nWeitere Einstellungen?',
+    query = update.callback_query
+    query.answer()
+    context.chat_data['RM_bezirk'] = query.data
+    query.edit_message_text(f'Restmüllbezirk eingestellt: {query.data}\nWeitere Einstellungen?',
                               reply_markup=settings_markup)
     return SETTINGS_MENU
 
 def set_recyclingbezirk(update: Update, context: CallbackContext):
-    context.chat_data['REC_bezirk'] = update.message.text
-    update.message.reply_text(f'Recyclingbezirk eingestellt: {update.message.text}\nWeitere Einstellungen?',
+    query = update.callback_query
+    query.answer()
+    context.chat_data['REC_bezirk'] = query.data
+    query.edit_message_text(f'Recyclingbezirk eingestellt: {query.data}\nWeitere Einstellungen?',
                               reply_markup=settings_markup)
     return SETTINGS_MENU
 
 def heute(update: Update, context: CallbackContext) -> int:
     """Send today's info."""
+    query = update.callback_query
+    query.answer()
     
     cd = context.chat_data
     if 'RM_bezirk' in cd.keys() and 'REC_bezirk' in cd.keys():
@@ -177,14 +276,16 @@ def heute(update: Update, context: CallbackContext) -> int:
             
         # pack message
         message = format_day_info(get_day_info(today, df), pat=pat)
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Bitte Einstellungen anpassen. /start", parse_mode='HTML')
+        query.edit_message_text(text="Bitte Einstellungen anpassen.", parse_mode='HTML', reply_markup=main_menu_markup)
         
     return MAIN_MENU
 
 def morgen(update: Update, context: CallbackContext) -> int:
     """Send tomorrow's info."""
+    query = update.callback_query
+    query.answer()
     
     cd = context.chat_data
     if 'RM_bezirk' in cd.keys() and 'REC_bezirk' in cd.keys():
@@ -199,30 +300,42 @@ def morgen(update: Update, context: CallbackContext) -> int:
 
         # pack & send message
         message = format_day_info(get_day_info(tomorrow, df), pat=pat)
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+        query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Bitte Einstellungen anpassen. /start", parse_mode='HTML')
+        query.edit_message_text(text="Bitte Einstellungen anpassen", parse_mode='HTML', reply_markup=main_menu_markup)
         
     return MAIN_MENU
 
-def next_date(update: Update, context: CallbackContext) -> int:
+def next_date(update: Update, context: CallbackContext):
     
-    cd = context.chat_data    
+    cd = context.chat_data
     if 'RM_bezirk' in cd.keys() and 'REC_bezirk' in cd.keys():
         rm_bez = cd['RM_bezirk']
         rec_bez = cd['REC_bezirk']
         pat = fr"Bez. {rm_bez}|Bez. {rec_bez}|{rec_bez} "
-    
         df = filter_df(get_df(FULL_CSV), pat=pat)
-        
         message = format_day_info(get_next_day(df), pat=pat)
-        # message =  f"{BEZIRK}\nRestmüll: Bez. {RESTMUELL_BEZIRK}\nRecycling: Bez.{RECYCLING_BEZIRK}\n {r_df}"
-        context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+    
+        if update.callback_query:
+            query = update.callback_query
+            query.answer()
+            query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
+            return MAIN_MENU
+        else:
+            context.bot.send_message(chat_id=update.message.chat_id,
+                                    text=message,
+                                    parse_mode='HTML')
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Bitte Einstellungen anpassen. /start", parse_mode='HTML')
-        
-    return MAIN_MENU
-
+        if update.callback_query:
+            query = update.callback_query
+            query.answer()
+            query.edit_message_text(text="Bitte Einstellungen anpassen.", parse_mode='HTML', reply_markup=main_menu_markup)
+            return MAIN_MENU
+        else:
+            context.bot.send_message(chat_id=update.message.chat_id,
+                                    text="Bitte Einstellungen anpassen. /start",
+                                    parse_mode='HTML')
+            
 def send_reminder(context: CallbackContext, message = ''):
     
     reminders_flag = context.job.context['chat_data']['reminders_flag']
@@ -288,7 +401,7 @@ def schedule_reminders(context: CallbackContext,
             # schedule one reminder per category k
             when = (datum-first_call)
             localwhen = TIMEZONE.localize(when)
-            message = f"""<i>Erinnerung</i>
+            message = f"""<i>⏰ Erinnerung ⏰</i>
 Heute noch rausstellen:
 <b>{k}</b>
 (Abholung: {DAYS_SHORT[datum.weekday()]}, {datum.strftime('%d.%m.%Y')}, \
@@ -310,7 +423,11 @@ Bez. {j_chat_data['RM_bezirk']}|{j_chat_data['REC_bezirk']})"""
     return None
 
 def set_reminders(update: Update, context: CallbackContext) -> int:
-
+    
+    query = update.callback_query
+    query.answer()
+    
+    chat_id = query.message.chat_id
     cd = context.chat_data
     if 'RM_bezirk' in cd.keys() and 'REC_bezirk' in cd.keys():
         rm_bez = cd['RM_bezirk']
@@ -324,7 +441,7 @@ def set_reminders(update: Update, context: CallbackContext) -> int:
             # remove ALL! jobs for this chat,
             # todo maybe only jobs containing "reminder" in future version
             jobs = context.job_queue.jobs()
-            chat_id = update.message.chat_id
+            
             for j in jobs:
                 if j.context['chat_id'] == chat_id:
                     j.schedule_removal()
@@ -334,7 +451,8 @@ def set_reminders(update: Update, context: CallbackContext) -> int:
                             text=f"Job REMOVED: {j.name}")
                         
             message = "Erinnerungen in diesem Chat sind jetzt AUS."
-            context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+            query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
+            # context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
             return None
         
         else:
@@ -347,21 +465,16 @@ def set_reminders(update: Update, context: CallbackContext) -> int:
             context.job_queue.run_repeating(schedule_reminders,
                                             interval= scheduler_interval,
                                             first=2,
-                                            context= {'chat_id': update.message.chat_id,
+                                            context= {'chat_id': chat_id,
                                                     'chat_data' : context.chat_data},
-                                            name=f"schedule_reminders_repeating_{update.message.chat_id}")
-        
-            # # initially schedule/remove jobs
-            # context.job_queue.run_once(schedule_reminders,
-            #                         when = 2,
-            #                         context = {'chat_id': update.message.chat_id,
-            #                                     'chat_data' : context.chat_data,},
-            #                         name=f"schedule_reminders_initial_{update.message.chat_id}")
-        
-            context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
+                                            name=f"schedule_reminders_repeating_{chat_id}")
+            
+            query.edit_message_text(text=message, parse_mode='HTML', reply_markup=main_menu_markup)
+            # context.bot.send_message(chat_id=update.effective_chat.id, text=message, parse_mode='HTML')
             
     else:
-        context.bot.send_message(chat_id=update.effective_chat.id, text="Bitte Einstellungen anpassen. /start", parse_mode='HTML')
+        query.edit_message_text(text="Bitte Einstellungen anpassen.", parse_mode='HTML', reply_markup=main_menu_markup)
+        # context.bot.send_message(chat_id=update.effective_chat.id, text="Bitte Einstellungen anpassen. /start", parse_mode='HTML')
         
     return MAIN_MENU
 
@@ -380,61 +493,21 @@ def scheduled_jobs(update: Update, context: CallbackContext):
         context.bot.send_message(chat_id=DEV_ID,parse_mode='HTML',\
             text= message)
 
-def get_next_day(df, lookday=None):
-    """take df and get next row from today or lookday"""
-    
-    if not lookday:
-        lookday =  datetime.today()
-    diff_df = df.index-lookday
-    return df.loc[diff_df >= timedelta(days=0)].iloc[0]
-    
-def unknown_cmd(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text('Befehl versteh ich nicht. /start ?',
-                              reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-    
-def unknown_msg(update: Update, context: CallbackContext) -> int:
-    update.message.reply_text('Nachricht versteh ich nicht. /start ?',
-                              reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
 def cancel(update: Update, context: CallbackContext) -> int:
     
     # maybe add something here later
     return MAIN_MENU
     
 def close_menu(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
     # reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard = True)
-    update.message.reply_text('tschau',
-                              reply_markup=ReplyKeyboardRemove())
-    return ConversationHandler.END
-
-def settings_done(update: Update, context: CallbackContext) -> int:
-    # reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard = True)
-    cdk = context.chat_data.keys()
-    if 'RM_bezirk' in cdk and 'REC_bezirk' in cdk:
-        update.message.reply_text(
-            f"Einstellungen: \nRestmuellbezirk: {context.chat_data['RM_bezirk']}\
-                \nRecyclingbezirk: {context.chat_data['REC_bezirk']}",
-            reply_markup=main_menu_markup)
-    elif 'RM_bezirk' in cdk:
-        update.message.reply_text(
-            f"Einstellungen: \nRestmuellbezirk: {context.chat_data['RM_bezirk']}\nRecyclingbezirk: N/A",
-            reply_markup=main_menu_markup)
-    elif 'REC_bezirk' in cdk:
-        update.message.reply_text(
-            f"Einstellungen: \nRestmuellbezirk: N/A\nRecyclingbezirk: N/A",
-            reply_markup=main_menu_markup)
-    return MAIN_MENU
+    query.edit_message_text("Tschau.\n", reply_markup=restart_markup)
+    return RESTART
 
 def help_command(update: Update, context: CallbackContext) -> None:
     """Displays info on how to use the bot."""
     update.message.reply_text(HELP_MSG)
-    
-def timeout(update: Update, context: CallbackContext) -> None:
-
-    update.message.reply_text('timeout',
-                              reply_markup=ReplyKeyboardRemove())
     
 def main() -> None:
     """Run the bot."""
@@ -465,41 +538,47 @@ def main() -> None:
         entry_points=[CommandHandler("start", start)],
         states={
             MAIN_MENU: [
-                MessageHandler(Filters.regex(r"Heute$"), heute),
-                MessageHandler(Filters.regex(r"Nächster Termin$"), next_date),
-                MessageHandler(Filters.regex(r"Morgen$"), morgen),
-                MessageHandler(Filters.regex(r"Erinnerungen$"), set_reminders),
-                MessageHandler(Filters.regex(r"Schließen$"), close_menu),
-                MessageHandler(Filters.regex(r"Einstellungen$"), settings),
+                CallbackQueryHandler(heute, pattern = r"^today$"),
+                CallbackQueryHandler(next_date, pattern = r"^next$"),
+                CallbackQueryHandler(morgen, pattern = r"^tomorrow$"),
+                CallbackQueryHandler(set_reminders, pattern = r"^reminders$"),
+                CallbackQueryHandler(close_menu, pattern = r"^close$"),
+                CallbackQueryHandler(settings, pattern = r"^settings$"),
             ],
             SETTINGS_MENU: [
-                MessageHandler(Filters.regex(r"Restmüllbezirk$"), select_restmuellbezirk),
-                MessageHandler(Filters.regex(r"Recyclingbezirk$"), select_recyclingbezirk),
-                MessageHandler(Filters.regex(r"Fertig$"), settings_done),
+                CallbackQueryHandler(select_restmuellbezirk, pattern = r"^trash$"),
+                CallbackQueryHandler(select_recyclingbezirk, pattern = r"^recycling$"),
+                CallbackQueryHandler(settings_done, pattern = r"^done$"),
             ],
             RESTMUELL_SETTING: [
-                MessageHandler(Filters.regex(r"^([1-8])$"), set_restmuellbezirk), # Restmuellbezirke 1-8
+                CallbackQueryHandler(set_restmuellbezirk, pattern = r"^([1-8])$"), # Restmuellbezirke 1-8
             ],
             RECYCLING_SETTING: [
-                MessageHandler(Filters.regex(r"^([A-E])$"), set_recyclingbezirk), # Recyclingbezirke A-D
+                CallbackQueryHandler(set_recyclingbezirk, pattern = r"^([A-E])$"), # Recyclingbezirke A-D
             ],
+            RESTART: [
+                CallbackQueryHandler(restart, pattern = r"^restart$")
+            ]
+            
         },
-        fallbacks=[CommandHandler("close", close_menu)]
+        fallbacks=[CommandHandler("start", start)]
     )
     
     dispatcher.add_handler(conv_handler)
-    # dispatcher.add_handler(settings_conv_handler)
     dispatcher.add_handler(CommandHandler('start', start))
-    # dispatcher.add_handler(CommandHandler('settings', settings))
-    dispatcher.add_handler(CommandHandler('heute', heute))
-    dispatcher.add_handler(CommandHandler('morgen', morgen))
+    dispatcher.add_handler(CommandHandler('restart', restart))
     dispatcher.add_handler(CommandHandler('next', next_date))
     dispatcher.add_handler(CommandHandler('help', help_command))
-    dispatcher.add_handler(CommandHandler('reminders_toggle', set_reminders))
-    dispatcher.add_handler(CommandHandler('scheduled_jobs', scheduled_jobs)) # nur dev/debug
     
-    dispatcher.add_handler(MessageHandler(Filters.command, unknown_cmd))
-    dispatcher.add_handler(MessageHandler(Filters.all, help_command))
+    # dispatcher.add_handler(CommandHandler('settings', settings))
+    # dispatcher.add_handler(CommandHandler('heute', heute))
+    # dispatcher.add_handler(CommandHandler('morgen', morgen))
+    # dispatcher.add_handler(CommandHandler('help', help_command))
+    # dispatcher.add_handler(CommandHandler('reminders_toggle', set_reminders))
+    # dispatcher.add_handler(CommandHandler('scheduled_jobs', scheduled_jobs)) # nur dev/debug
+    
+    # dispatcher.add_handler(MessageHandler(Filters.command, unknown_cmd))
+    # dispatcher.add_handler(MessageHandler(Filters.all, help_command))
     
     COMMANDS = [
     ("start", "Hauptmenü starten"),
