@@ -5,10 +5,10 @@
 Muellbot
 
 TODO
-    - change to inline Keyboard... seems nicer in Groupchat... too many messages
-    - add Setting for reminder time, instead of 20:00 fixed
-    - ...
-    - (low prio) change from pickled persistence to json (safer + human readable)
+    ✓ change to inline Keyboard... seems nicer in Groupchat... too many messages
+    ☐ add Setting for reminder time, instead of 20:00 fixed
+    ☐ fix parsing / dataframes for "special" Dates (D/E ohne Bez.)
+    ☐ (low prio) change from pickled persistence to json (safer + human readable)
 """
 
 import logging
@@ -187,7 +187,7 @@ def settings(update: Update, context: CallbackContext) -> int:
         
     query.edit_message_text(
             text=message+"\nEinstellung wählen:",
-            reply_markup=main_menu_markup)
+            reply_markup=settings_markup)
         
     return SETTINGS_MENU
 
