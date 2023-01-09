@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+from datetime import datetime
+
 import camelot
 import pandas as pd
-from datetime import datetime
+
 
 def zip_to_str_list(l):
     """takes list/tuple of lists and returns list of strings
@@ -14,15 +16,15 @@ def zip_to_str_list(l):
         rr.append(r[:-1])
     return rr
     
-def parse_calendar(fn = "./Abfuhrkalender_2022-1.pdf", year=2022) -> list:
-    """PDF parsen. """
+def parse_calendar(fn, year) -> list:
+    """PDF parsen. fn = filename"""
     
     # table_areas
-    t_top       = 542
-    t_bottom    = 160
+    t_top       = 535
+    t_bottom    = 156
     t_width     = 138
 
-    x1 = [15,152,291,429,567,705]
+    x1 = [9,144,282,420,560,698]
     y1 = [t_top for i in range(len(x1))]
     x2 = [i+t_width for i in x1]
     y2 = [t_bottom for i in range(len(x1))]
@@ -86,10 +88,10 @@ def parse_calendar(fn = "./Abfuhrkalender_2022-1.pdf", year=2022) -> list:
 
 def main():
     
-    YEAR = 2022
+    YEAR = 2023
 
     # parsen
-    fn = "./Abfuhrkalender_2022-1.pdf"
+    fn = "./Abfuhrkalender_2023.pdf"
     df = parse_calendar(fn, year = YEAR)
         
     # csv schreiben
