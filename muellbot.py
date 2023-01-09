@@ -14,7 +14,6 @@ TODO
 import logging
 # Data Manipulation
 from datetime import datetime, timedelta
-from multiprocessing import context
 
 import pandas as pd
 from pytz import timezone
@@ -46,7 +45,7 @@ TIMEZONE = timezone('Europe/Berlin')
 DATEFORMAT = "%d.%m.%Y"
 
 # FILTERED_CSV = f'AK_{YEAR}_{RESTMUELL_BEZIRK}{RECYCLING_BEZIRK}-{BEZIRK}.csv'
-FULL_CSV = f'AK_2022_komplett.csv'
+FULL_CSV = f'AK_2023_komplett.csv'
  
 MAIN_MENU, SETTINGS_MENU, RESTMUELL_SETTING, RECYCLING_SETTING, SETTINGS_DONE, RESTART = range(6)
 
